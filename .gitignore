@@ -1,7 +1,5 @@
-node_modules
-.pytest_cache
-.terraform
-.terraform.tfstate.lock.info
-*.tfstate.backup
-credentials
-.pytest_cache
+env.sh
+setup/terraform/terraform.tfstate
+setup/terraform/terraform.tfstate.backup
+setup/terraform/.terraform/
+setup/terraform/.terraform.lock.hcl
