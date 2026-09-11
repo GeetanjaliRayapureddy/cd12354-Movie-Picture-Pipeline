@@ -1,0 +1,126 @@
+name: Frontend Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "starter/frontend/**"
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 490976329066.dkr.ecr.us-east-1.amazonaws.com
+  EKS_CLUSTER_NAME: cluster
+  IMAGE_REPO: frontend
+  REACT_APP_MOVIE_API_URL: http://acb5cb6b52fdd4c10920593972ff626a-1089393562.us-east-1.elb.amazonaws.com
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: starter/frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: "starter/frontend/.nvmrc"
+          cache: npm
+          cache-dependency-path: "starter/frontend/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: starter/frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: "starter/frontend/.nvmrc"
+          cache: npm
+          cache-dependency-path: "starter/frontend/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --watchAll=false
+
+  build-and-push:
+    runs-on: self-hosted
+
+    needs:
+      - lint
+      - test
+
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: vars
+        run: echo "image_tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Amazon ECR
+        run: aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+      - name: Build Docker image
+        working-directory: starter/frontend
+        run: |
+          docker build \
+            --build-arg REACT_APP_MOVIE_API_URL="${REACT_APP_MOVIE_API_URL}" \
+            --tag "$ECR_REGISTRY/$IMAGE_REPO:${{ steps.vars.outputs.image_tag }}" .
+
+      - name: Push image to ECR
+        run: |
+          docker push "$ECR_REGISTRY/$IMAGE_REPO:${{ steps.vars.outputs.image_tag }}"
+
+  deploy:
+    runs-on: self-hosted
+
+    needs:
+      - build-and-push
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Install kustomize
+        working-directory: starter/frontend/k8s
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+
+      - name: Set image in kustomize
+        working-directory: starter/frontend/k8s
+        run: |
+          ./kustomize edit set image frontend="$ECR_REGISTRY/$IMAGE_REPO:${{ needs.build-and-push.outputs.image_tag }}"
+
+      - name: Deploy to EKS
+        working-directory: starter/frontend/k8s
+        run: |
+          kubectl apply -k .
+          kubectl rollout status deployment/frontend --timeout=120s
