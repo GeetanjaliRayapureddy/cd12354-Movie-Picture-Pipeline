@@ -13,7 +13,7 @@ env:
   ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
   EKS_CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
   IMAGE_REPO: frontend
-  REACT_APP_MOVIE_API_URL: http://acb5cb6b52fdd4c10920593972ff626a-1089393562.us-east-1.elb.amazonaws.com
+  REACT_APP_MOVIE_API_URL: http://a99e827cf0a5f49a785c10fe8d359efd-947767413.us-east-1.elb.amazonaws.com
 
 jobs:
   lint:
