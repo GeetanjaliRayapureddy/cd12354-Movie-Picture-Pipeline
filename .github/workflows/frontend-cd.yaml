@@ -139,3 +139,26 @@ jobs:
         run: |
           kubectl apply -k .
           kubectl rollout status deployment/frontend --timeout=120s
+
+      - name: Verify deployment (proof of automated deploy)
+        run: |
+          echo "=== Deployment timestamp ==="
+          date -u
+          echo ""
+          echo "=== Image tag deployed by this run ==="
+          echo "${{ needs.build-and-push.outputs.image_tag }}"
+          echo ""
+          echo "=== Running pods (note AGE/creation time) ==="
+          kubectl get pods -o wide
+          echo ""
+          echo "=== Deployed image on cluster ==="
+          kubectl get deployment frontend -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          echo ""
+          echo "=== Frontend service URL ==="
+          FRONTEND_URL=$(kubectl get svc frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          echo "http://$FRONTEND_URL"
+          echo ""
+          echo "=== Waiting for LoadBalancer to be reachable ==="
+          sleep 30
+          echo "=== Live response from frontend (proof app is serving content) ==="
+          curl -sSf "http://$FRONTEND_URL" | head -c 1000
